@@ -38,7 +38,6 @@ def load_train(train_path, image_size, classes):
 def load_test(test_path, image_size):
     path = os.path.join(test_path, '*g')
     files = sorted(glob.glob(path))
-
     X_test = []
     X_test_id = []
     print("Reading test images")
