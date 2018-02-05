@@ -37,8 +37,8 @@ batch_size = 8  # 一次训练8个样本数
 validation_size = .16  # 验证集比例
 early_stopping = None  # # 在终止训练前，等待验证集失败后的等待时间
 
-train_path = 'E:/catdog/train/'
-test_path = 'E:/catdog/test/'
+train_path = 'F:/catdog/train/'
+test_path = 'F:/catdog/test/'
 checkpoint_dir = "models/"
 
 # ## Load Data
@@ -52,9 +52,13 @@ print("Validation_set:\t{}".format(len(data.valid.labels)))  # 验证集样本�
 
 images, cls_true = data.train.images, data.train.cls  # 训练集上的图片和标签
 
-# -----------------------数据预处理结束-------------------------
-# ## TensorFlow Graph
-# 在给定的形状中创建新的TensorFlow变量并以随机值初始化它们的函数。注意，初始化实际上并没有完成，它仅仅是在TensorFlow图中定义了。
+# -----------------------数据预处理结束------------------------
+
+x = tf.placeholder(tf.float32, shape=[None, img_size_flat], name='x')  # img_size_flat = img_size * img_size * num_channels # EL输入
+x_image = tf.reshape(x, [-1, img_size, img_size, num_channels])  # cnn的输入
+y_true = tf.placeholder(tf.float32, shape=[None, num_classes], name='y_true')  # label的真实值
+y_true_cls = tf.argmax(y_true, 1)
+
 def new_weights(shape):  # 权重
     return tf.Variable(tf.truncated_normal(shape, stddev=0.1))
 
@@ -92,15 +96,6 @@ def new_fc_layer(input, num_inputs, num_outputs, use_relu=True):  # 输入是inp
     return layer
 
 
-x = tf.placeholder(tf.float32, shape=[None, img_size_flat],
-                   name='x')  # img_size_flat = img_size * img_size * num_channels # EL输入
-
-# 卷积层希望x被编码成一个4D的张量，所以要把x reshape成 `[num_images, img_height, img_width, num_channels]`.
-x_image = tf.reshape(x, [-1, img_size, img_size, num_channels])  # cnn的输入
-
-# 接下来，我们有一个占位符变量，用于与占位符变量x中输入的图像相关联的真实标签。这个占位符变量的形状是[None, num_classes]，这意味着它可以容纳任意数量的标签，每个标签都是长度为`num_classes`的向量。
-y_true = tf.placeholder(tf.float32, shape=[None, num_classes], name='y_true')  # label的真实值
-y_true_cls = tf.argmax(y_true, 1)
 
 # Convolutional Layer 1
 layer_conv1, weights_conv1 = new_conv_layer(input=x_image, num_input_channels=num_channels, filter_size=filter_size1,
@@ -132,7 +127,6 @@ correct_prediction = tf.equal(y_pred_cls, y_true_cls)
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 # TensorFlow Run
-# 一旦创建了TensorFlow图，我们就必须创建一个TensorFlow会话，用于执行该图表。
 session = tf.Session()
 session.run(tf.global_variables_initializer())
 train_batch_size = batch_size  # 样本数
@@ -154,19 +148,20 @@ def print_progress(epoch, feed_dict_train, train_loss, feed_dict_validate, val_l
 
 
 # 执行许多优化迭代的功能，以便逐步改进网络层的变量。在每次迭代中，从训练集中选择了一批新的数据，然后TensorFlow使用这些训练样例来执行优化器。每一个epoch后就打印一次。
-
 def new_optimize(epoch, batch_size):
     start_time = time.time()
     for i in range(epoch):
-        for j in range(int(data.train.num_examples/batch_size)):
-            x_batch, y_true_batch, _, cls_batch = data.train.next_batch(train_batch_size)
-            x_valid_batch, y_valid_batch, _, valid_cls_batch = data.valid.next_batch(train_batch_size)
-            x_batch = x_batch.reshape(train_batch_size, img_size_flat)  # train_batch_size:样本数
-            x_valid_batch = x_valid_batch.reshape(train_batch_size, img_size_flat)
+        for j in range(int(data.train.num_examples/batch_size)):  # 一轮epoch中的第j个batch_size
+            x_batch, y_true_batch, _, cls_batch = data.train.next_batch(batch_size)
+            x_valid_batch, y_valid_batch, _, valid_cls_batch = data.valid.next_batch(batch_size)
+
+            x_batch = x_batch.reshape(batch_size, img_size_flat)  # train_batch_size:样本数
+            x_valid_batch = x_valid_batch.reshape(batch_size, img_size_flat)
 
             feed_dict_train = {x: x_batch, y_true: y_true_batch}
             feed_dict_validate = {x: x_valid_batch, y_true: y_valid_batch}
             session.run(optimizer, feed_dict=feed_dict_train)
+
         val_loss = session.run(cost, feed_dict=feed_dict_validate)
         train_loss = session.run(cost, feed_dict=feed_dict_train)
         print_progress(i, feed_dict_train, train_loss, feed_dict_validate, val_loss)  # 每个epoch的最后一个batch_size 的feed_dict_train, feed_dict_validate值。
