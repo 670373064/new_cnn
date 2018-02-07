@@ -114,13 +114,13 @@ layer_flat, num_features = flatten_layer(layer_conv3)
 layer_fc1 = new_fc_layer(input=layer_flat, num_inputs=num_features, num_outputs=fc_size, use_relu=True)
 
 # Fully-Connected Layer 2
-layer_fc2 = new_fc_layer(input=layer_fc1, num_inputs=fc_size, num_outputs=num_classes, use_relu=False)
+layer_fc2 = new_fc_layer(input=layer_fc1, num_inputs=fc_size, num_outputs=num_classes, use_relu=True)
 
-y_pred = tf.nn.softmax(layer_fc2)
-y_pred_cls = tf.argmax(y_pred, 1)
+# y_pred = tf.nn.softmax(layer_fc2)
+y_pred_cls = tf.argmax(layer_fc2, 1)
 
-cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=layer_fc2, labels=y_true)
-cost = tf.reduce_mean(cross_entropy)
+cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=layer_fc2, labels=y_true))
+
 optimizer = tf.train.AdamOptimizer(learning_rate=1e-4).minimize(cost)
 
 correct_prediction = tf.equal(y_pred_cls, y_true_cls)
@@ -151,15 +151,15 @@ def print_progress(epoch, feed_dict_train, train_loss, feed_dict_validate, val_l
 def new_optimize(epoch, batch_size):
     start_time = time.time()
     for i in range(epoch):
-        for j in range(int(data.train.num_examples/batch_size)):  # 一轮epoch中的第j个batch_size
-            x_batch, y_true_batch, _, cls_batch = data.train.next_batch(batch_size)
-            x_valid_batch, y_valid_batch, _, valid_cls_batch = data.valid.next_batch(batch_size)
+        for j in range(int(data.train.num_examples/batch_size)):
 
-            x_batch = x_batch.reshape(batch_size, img_size_flat)  # train_batch_size:样本数
-            x_valid_batch = x_valid_batch.reshape(batch_size, img_size_flat)
-
+            x_batch, y_true_batch, _, cls_batch = data.train.next_batch(train_batch_size)
+            x_valid_batch, y_valid_batch, _, valid_cls_batch = data.valid.next_batch(train_batch_size)
+            x_batch = x_batch.reshape(train_batch_size, img_size_flat)  # train_batch_size:样本数
+            x_valid_batch = x_valid_batch.reshape(train_batch_size, img_size_flat)
             feed_dict_train = {x: x_batch, y_true: y_true_batch}
             feed_dict_validate = {x: x_valid_batch, y_true: y_valid_batch}
+
             session.run(optimizer, feed_dict=feed_dict_train)
 
         val_loss = session.run(cost, feed_dict=feed_dict_validate)
@@ -179,7 +179,7 @@ def new_optimize(epoch, batch_size):
     print("Time elapsed: " + str(timedelta(seconds=int(round(time_dif)))))
 
 
-new_optimize(epoch=30, batch_size=10)
+new_optimize(epoch=30, batch_size=2)
 session.close()
 
 
