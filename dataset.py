@@ -51,7 +51,7 @@ def load_test(test_path, image_size):
     ### because we're not creating a DataSet object for the test images, normalization happens here
     X_test = np.array(X_test, dtype=np.uint8)
     X_test = X_test.astype('float32')
-    X_test = X_test / 255
+    X_test = X_test
 
     return X_test, X_test_id
 
@@ -101,20 +101,13 @@ class DataSet(object):
         return self._epochs_completed
 
     def next_batch(self, batch_size):
-        """Return the next `batch_size` examples from this data set."""
+        """Return the next `batch_size` from this data set."""
         start = self._index_in_epoch
         self._index_in_epoch += batch_size
 
         if self._index_in_epoch > self._num_examples:
             # Finished epoch
             self._epochs_completed += 1
-
-            # # Shuffle the data (maybe)
-            # perm = np.arange(self._num_examples)
-            # np.random.shuffle(perm)
-            # self._images = self._images[perm]
-            # self._labels = self._labels[perm]
-            # Start next epoch
 
             start = 0
             self._index_in_epoch = batch_size

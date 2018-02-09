@@ -5,59 +5,113 @@
 # ----------------------------------------------------------------
 import time
 import tensorflow as tf
-import dataset
 from datetime import timedelta
+import os
+import glob
+import numpy as np
+import cv2
+from sklearn.utils import shuffle
 
-# 设置超参数
 
-# Convolutional Layer 1.
-filter_size1 = 3  # 卷积核尺寸
-num_filters1 = 32  # 卷积核输出通道数（卷积核个数）
+def load_train(train_path, weight_size, hight_size, classes):
+    """
+    load训练数据
+    :param train_path: 训练数据路径
+    :param image_size: 图片需要resize的尺寸
+    :param classes: 图片类别（数组）
+    :return: 图片、标签
+    """
+    images = []
+    labels = []
+    print('Reading training images......')
+    for fld in classes:  # 假设数据目录的每个类都有一个单独的文件夹，每个文件夹都以类命名
+        index = classes.index(fld)
+        print('Loading {} files (Index: {})'.format(fld, index))
+        path = os.path.join(train_path, fld, '*g')
+        files = glob.glob(path)
+        for fl in files:
+            image = cv2.imread(fl)
+            image = cv2.resize(image, (weight_size, hight_size), cv2.INTER_LINEAR)
+            images.append(image)
+            label = np.zeros(len(classes))  # 相当于做了一次one-hot
+            label[index] = 1.0  # 相当于做了一次one-hot
+            labels.append(label)  # 相当于做了一次one-hot
 
-# Convolutional Layer 2.
-filter_size2 = 3
-num_filters2 = 32
+    images = np.array(images)
+    labels = np.array(labels)
+    return images, labels
 
-# Convolutional Layer 3.
-filter_size3 = 3
-num_filters3 = 64
 
-# Fully-connected layer.
-fc_size = 128  # 全连接层卷积核输出通道数
-num_channels = 3  # 图片通道数（做CNN输入使用）
-img_size = 128  # 图片尺寸
-img_size_flat = img_size * img_size * num_channels  # 图片flatten为1D向量
-img_shape = (img_size, img_size)
+def load_test(test_path, weight_size, hight_size):
+    path = os.path.join(test_path, '*g')
+    files = sorted(glob.glob(path))
+    X_test = []
+    X_test_id = []
+    print("Reading test images")
+    for fl in files:
+        flbase = os.path.basename(fl)
+        img = cv2.imread(fl)
+        img = cv2.resize(img, (weight_size, hight_size), cv2.INTER_LINEAR)
+        X_test.append(img)
+        X_test_id.append(flbase)
+
+    X_test = np.array(X_test, dtype=np.uint8)
+    X_test = X_test.astype('float32')
+    return X_test, X_test_id
+
+
+def read_train_sets(train_path, weight_size, hight_size, classes, validation_size):
+    images, labels = load_train(train_path, weight_size, hight_size, classes)
+    images, labels = shuffle(images, labels, )
+
+    if isinstance(validation_size, float):
+        validation_size = int(validation_size * images.shape[0])
+
+    validation_images = images[:validation_size]
+    validation_labels = labels[:validation_size]
+
+    train_images = images[validation_size:]
+    train_labels = labels[validation_size:]
+
+    return train_images, train_labels, validation_images, validation_labels
+
+
+def read_test_set(test_path, weight_size, hight_size, ):
+    images, ids = load_test(test_path, weight_size, hight_size)
+    return images, ids
+
+
+img_size_flat = 256 * 256 * 3  # 图片flatten为1D向量
 
 classes = ['dog', 'cat']
 num_classes = len(classes)  # 分类数量
-
-# batch size
-batch_size = 8  # 一次训练8个样本数
-validation_size = .16  # 验证集比例
+batch_size = None
 early_stopping = None  # # 在终止训练前，等待验证集失败后的等待时间
 
-train_path = 'F:/catdog/train/'
+train_path = 'F:/catdog/new_test/'
 test_path = 'F:/catdog/test/'
 checkpoint_dir = "models/"
 
 # ## Load Data
-data = dataset.read_train_sets(train_path, img_size, classes, validation_size=validation_size)
-test_images, test_ids = dataset.read_test_set(test_path, img_size)
+train_images, train_labels, validation_images, validation_labels = read_train_sets(train_path, 256, 256, classes, validation_size=0.005)
+
+# print(validation_images.shape,train_images.shape,validation_labels.shape,train_labels.shape)
+test_images, test_ids = read_test_set(test_path, weight_size=256, hight_size=256)
+num_examples = train_images.shape[0]
 
 print("Size of:")
-print("Training_set:\t{}".format(len(data.train.labels)))  # 训练集样本数
+print("Training_set:\t{}".format(num_examples))  # 训练集样本数
 print("Test_set:\t{}".format(len(test_images)))  # 测试集样本数
-print("Validation_set:\t{}".format(len(data.valid.labels)))  # 验证集样本数
-
-images, cls_true = data.train.images, data.train.cls  # 训练集上的图片和标签
+print("Validation_set:\t{}".format(validation_images.shape[0]))  # 验证集样本数
 
 # -----------------------数据预处理结束------------------------
 
-x = tf.placeholder(tf.float32, shape=[None, img_size_flat], name='x')  # img_size_flat = img_size * img_size * num_channels # EL输入
-x_image = tf.reshape(x, [-1, img_size, img_size, num_channels])  # cnn的输入
+x = tf.placeholder(tf.float32, shape=[None, img_size_flat],
+                   name='x')  # img_size_flat = img_size * img_size * num_channels # EL输入
+x_image = tf.reshape(x, [-1, 256, 256, 3])  # cnn的输入
 y_true = tf.placeholder(tf.float32, shape=[None, num_classes], name='y_true')  # label的真实值
-y_true_cls = tf.argmax(y_true, 1)
+y_true_label = tf.argmax(y_true, 1)
+
 
 def new_weights(shape):  # 权重
     return tf.Variable(tf.truncated_normal(shape, stddev=0.1))
@@ -96,76 +150,97 @@ def new_fc_layer(input, num_inputs, num_outputs, use_relu=True):  # 输入是inp
     return layer
 
 
+layer_conv1, weights_conv1 = new_conv_layer(input=x_image, num_input_channels=3, filter_size=3,
+                                            num_filters=64, use_pooling=False)
 
-# Convolutional Layer 1
-layer_conv1, weights_conv1 = new_conv_layer(input=x_image, num_input_channels=num_channels, filter_size=filter_size1,
-                                            num_filters=num_filters1, use_pooling=True)
+layer_conv2, weights_conv2 = new_conv_layer(input=layer_conv1, num_input_channels=64,
+                                            filter_size=3, num_filters=64, use_pooling=True)
 
-# Convolutional Layers 2 and 3
-layer_conv2, weights_conv2 = new_conv_layer(input=layer_conv1, num_input_channels=num_filters1,
-                                            filter_size=filter_size2, num_filters=num_filters2, use_pooling=True)
-layer_conv3, weights_conv3 = new_conv_layer(input=layer_conv2, num_input_channels=num_filters2,
-                                            filter_size=filter_size3, num_filters=num_filters3, use_pooling=True)
+layer_conv3, weights_conv3 = new_conv_layer(input=layer_conv2, num_input_channels=64,
+                                            filter_size=3, num_filters=128, use_pooling=False)
 
-# Flatten Layer
-layer_flat, num_features = flatten_layer(layer_conv3)
+layer_conv4, weights_conv4 = new_conv_layer(input=layer_conv3, num_input_channels=128,
+                                            filter_size=3, num_filters=128, use_pooling=True)
 
-# Fully-Connected Layer 1
-layer_fc1 = new_fc_layer(input=layer_flat, num_inputs=num_features, num_outputs=fc_size, use_relu=True)
+layer_conv5, weights_conv5 = new_conv_layer(input=layer_conv4, num_input_channels=128,
+                                            filter_size=3, num_filters=256, use_pooling=False)
 
-# Fully-Connected Layer 2
-layer_fc2 = new_fc_layer(input=layer_fc1, num_inputs=fc_size, num_outputs=num_classes, use_relu=True)
+layer_conv6, weights_conv6 = new_conv_layer(input=layer_conv5, num_input_channels=256,
+                                            filter_size=3, num_filters=256, use_pooling=True)
 
-# y_pred = tf.nn.softmax(layer_fc2)
-y_pred_cls = tf.argmax(layer_fc2, 1)
+layer_conv7, weights_conv7 = new_conv_layer(input=layer_conv6, num_input_channels=256,
+                                            filter_size=3, num_filters=512, use_pooling=True)
+
+layer_flat, num_features = flatten_layer(layer_conv7)
+
+layer_fc1 = new_fc_layer(input=layer_flat, num_inputs=num_features, num_outputs=512, use_relu=True)
+
+layer_fc1_drop = tf.nn.dropout(layer_fc1, keep_prob=0.5)
+
+layer_fc2 = new_fc_layer(input=layer_fc1_drop, num_inputs=512, num_outputs=2, use_relu=True)
+
+y_pred_label = tf.argmax(layer_fc2, 1)
 
 cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=layer_fc2, labels=y_true))
-
 optimizer = tf.train.AdamOptimizer(learning_rate=1e-4).minimize(cost)
-
-correct_prediction = tf.equal(y_pred_cls, y_true_cls)
+correct_prediction = tf.equal(y_pred_label, y_true_label)
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-# TensorFlow Run
 session = tf.Session()
 session.run(tf.global_variables_initializer())
-train_batch_size = batch_size  # 样本数
-
-
-def print_progress(epoch, feed_dict_train, train_loss, feed_dict_validate, val_loss):
-    """
-    每轮epoch后打印出acc、val_acc、val_loss
-    :param epoch: epoch 轮数
-    :param feed_dict_train: 格式为[num_train,mg_size * img_size * num_channels]
-    :param feed_dict_validate: 格式为[num_train,mg_size * img_size * num_channels]
-    :param val_loss:
-    :return:epoch、train_acc、val_acc、val_loss
-    """
-    acc = session.run(accuracy, feed_dict=feed_dict_train)
-    val_acc = session.run(accuracy, feed_dict=feed_dict_validate)
-    msg = "Epoch {0} --- Train_acc:{1:>6.2%}, Train_loss:{3:.3f}, Val_acc:{2:>6.2%}, Val_loss:{3:.3f}"
-    print(msg.format(epoch + 1, acc, train_loss, val_acc, val_loss))
 
 
 # 执行许多优化迭代的功能，以便逐步改进网络层的变量。在每次迭代中，从训练集中选择了一批新的数据，然后TensorFlow使用这些训练样例来执行优化器。每一个epoch后就打印一次。
-def new_optimize(epoch, batch_size):
+def optimize(epoch, batch_size):
     start_time = time.time()
     for i in range(epoch):
-        for j in range(int(data.train.num_examples/batch_size)):
+        all_batch_train_acc = 0
+        all_batch_train_loss = 0
+        all_batch_val_acc = 0
+        all_batch_val_loss = 0
+        for j in range(0, int(num_examples / batch_size)):
+            start = j * batch_size
+            end = start + batch_size
+            session.run(optimizer, feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end]})
 
-            x_batch, y_true_batch, _, cls_batch = data.train.next_batch(train_batch_size)
-            x_valid_batch, y_valid_batch, _, valid_cls_batch = data.valid.next_batch(train_batch_size)
-            x_batch = x_batch.reshape(train_batch_size, img_size_flat)  # train_batch_size:样本数
-            x_valid_batch = x_valid_batch.reshape(train_batch_size, img_size_flat)
-            feed_dict_train = {x: x_batch, y_true: y_true_batch}
-            feed_dict_validate = {x: x_valid_batch, y_true: y_valid_batch}
+            # 每训练一组batch_size数据后，输出 batch_acc\val等信息
+            batch_train_acc = session.run(accuracy,
+                                          feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end]})
+            batch_train_loss = session.run(cost, feed_dict={x_image: train_images[start:end],
+                                                            y_true: train_labels[start:end]})
+            batch_val_acc = session.run(accuracy,
+                                        feed_dict={x_image: validation_images, y_true: validation_labels})
+            batch_val_loss = session.run(cost,
+                                         feed_dict={x_image: validation_images, y_true: validation_labels})
 
-            session.run(optimizer, feed_dict=feed_dict_train)
+            batch_output_string = "batch %s : Train_acc:%.3f, Train_loss:%.3f, Val_acc:%.3f, Val_loss:%.3f"
+            print(batch_output_string % (j + 1, batch_train_acc, batch_train_loss, batch_val_acc,
+                                         batch_val_loss))  # 输出每batch_size个样本后的train_acc、train_loss、val_acc、val_loss
 
-        val_loss = session.run(cost, feed_dict=feed_dict_validate)
-        train_loss = session.run(cost, feed_dict=feed_dict_train)
-        print_progress(i, feed_dict_train, train_loss, feed_dict_validate, val_loss)  # 每个epoch的最后一个batch_size 的feed_dict_train, feed_dict_validate值。
 
+            all_batch_train_acc += batch_train_acc
+            all_batch_train_loss += batch_train_loss
+            all_batch_val_acc += batch_val_acc
+            all_batch_val_loss += batch_val_loss
+        '''
+        # 每一轮epoch后输出 acc等（数据来源于这一轮epoch的最后一个batch_szie）
+        acc = session.run(accuracy, feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end]})
+        train_loss = session.run(cost, feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end]})
+
+        val_acc = session.run(accuracy, feed_dict={x_image: validation_images[:5], y_true: validation_labels[:5]})
+        val_loss = session.run(cost, feed_dict={x_image: validation_images[:5], y_true: validation_labels[:5]})
+        '''
+        # print(all_batch_train_acc, all_batch_train_loss, all_batch_val_acc, all_batch_val_loss)
+        # 每一轮epoch后输出平均acc等（数据来源于这一轮epoch的最后一个batch_szie
+        avg_train_acc = all_batch_train_acc / int(num_examples / batch_size)
+        avg_train_loss = all_batch_train_loss / int(num_examples / batch_size)
+        avg_val_acc = all_batch_val_acc / int(num_examples / batch_size)
+        avg_val_loss = all_batch_val_loss / int(num_examples / batch_size)
+        output_string = "Epoch %s >>> Train_acc:%.3f, Train_loss:%.3f, Val_acc:%.3f, Val_loss:%.3f <<<"
+        print(output_string % (i + 1, avg_train_acc, avg_train_loss, avg_val_acc, avg_val_loss))
+        print('\r')
+
+        '''
         if early_stopping:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -174,12 +249,14 @@ def new_optimize(epoch, batch_size):
                 patience += 1
             if patience == early_stopping:
                 break
+        '''
     end_time = time.time()
     time_dif = end_time - start_time
+    saver = tf.train.Saver()
+    save_path = saver.save(session, 'F:/model/model.ckpt')
+    print("保存到：", save_path)
     print("Time elapsed: " + str(timedelta(seconds=int(round(time_dif)))))
 
 
-new_optimize(epoch=30, batch_size=2)
+optimize(epoch=20, batch_size=2)
 session.close()
-
-
