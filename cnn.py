@@ -93,7 +93,8 @@ test_path = 'F:/catdog/test/'
 checkpoint_dir = "models/"
 
 # ## Load Data
-train_images, train_labels, validation_images, validation_labels = read_train_sets(train_path, 256, 256, classes, validation_size=0.005)
+train_images, train_labels, validation_images, validation_labels = read_train_sets(train_path, 256, 256, classes,
+                                                                                   validation_size=0.1)
 
 # print(validation_images.shape,train_images.shape,validation_labels.shape,train_labels.shape)
 test_images, test_ids = read_test_set(test_path, weight_size=256, hight_size=256)
@@ -113,75 +114,142 @@ y_true = tf.placeholder(tf.float32, shape=[None, num_classes], name='y_true')  #
 y_true_label = tf.argmax(y_true, 1)
 
 
-def new_weights(shape):  # 权重
-    return tf.Variable(tf.truncated_normal(shape, stddev=0.1))
+def weight_variable(shape, name="weights"):  # 初始化权重
+    initial = tf.truncated_normal(shape, dtype=tf.float32, stddev=0.1)  # 不为标准正态分布\截断的正态分布噪声
+    return tf.Variable(initial, name=name)
 
 
-def new_biases(length):  # 偏差
-    return tf.Variable(tf.constant(0.05, shape=[length]))
+def bias_variable(shape, name="biases"):  # 初始化偏置项 b
+    initial = tf.constant(0.1, dtype=tf.float32, shape=shape)
+    return tf.Variable(initial, name=name)
 
 
-def new_conv_layer(input, num_input_channels, filter_size, num_filters, use_pooling=True):
-    shape = [filter_size, filter_size, num_input_channels, num_filters]
-    weights = new_weights(shape=shape)
-    biases = new_biases(length=num_filters)
-    layer = tf.nn.conv2d(input=input, filter=weights, strides=[1, 1, 1, 1],
-                         padding='SAME')  # 为卷积创建一个TensorFlow操作。注意，所有维度上的步幅都设置为1，填充设置为"SAME"也就是输入图像用0填充，所以输出的大小是一样的。
-    layer += biases  # 把bias偏差加到卷积的结果中。每个过滤通道都添加了一个bias值。
-    if use_pooling:
-        layer = tf.nn.max_pool(value=layer, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
-    layer = tf.nn.relu(layer)
-    return layer, weights
+def conv2d(input, w):  # 卷积项，w为卷积核
+    return tf.nn.conv2d(input, w, [1, 1, 1, 1], padding='SAME')
 
 
-def flatten_layer(layer):  # 卷积层产生一个带有4维的输出张量。我们将在卷积层之后添加全连通的层，因此我们需要将4D张量减少为2D，这可以作为全连通层的输入。
-    layer_shape = layer.get_shape()  # layer_shape == [num_images, img_height, img_width, num_channels]
-    num_features = layer_shape[1:4].num_elements()  # features数量: img_height * img_width * num_channels
-    layer_flat = tf.reshape(layer, [-1, num_features])  # Reshape the layer to [num_images, num_features].
-    return layer_flat, num_features
+def pool_max(input):  # 最大池化项
+    return tf.nn.max_pool(input,
+                          ksize=[1, 2, 2, 1],  # 池化层尺寸
+                          strides=[1, 2, 2, 1],  # 步长尺寸
+                          padding='SAME',
+                          )
 
 
-def new_fc_layer(input, num_inputs, num_outputs, use_relu=True):  # 输入是input = layer_flat, num_inputs = num_features
-    weights = new_weights(shape=[num_inputs, num_outputs])  # Create new weights and biases.
-    biases = new_biases(length=num_outputs)
-    layer = tf.matmul(input, weights) + biases
-    if use_relu:
-        layer = tf.nn.relu(layer)
-    return layer
+def fc(input, w, b):  # 全连接层
+    return tf.matmul(input, w) + b
 
 
-layer_conv1, weights_conv1 = new_conv_layer(input=x_image, num_input_channels=3, filter_size=3,
-                                            num_filters=64, use_pooling=False)
+# conv1
+with tf.name_scope('conv1_1') as scope:
+    kernel = weight_variable([3, 3, 3, 64])  # 重点关注第一层卷积。卷积核为3*3,输入channels = 1(输入通道数),卷集核个数（输出通道数）为64。
+    biases = bias_variable([64])
+    output_conv1_1 = tf.nn.relu(conv2d(x_image, kernel) + biases, name=scope)
 
-layer_conv2, weights_conv2 = new_conv_layer(input=layer_conv1, num_input_channels=64,
-                                            filter_size=3, num_filters=64, use_pooling=True)
+with tf.name_scope('conv1_2') as scope:
+    kernel = weight_variable([3, 3, 64, 64])
+    biases = bias_variable([64])
+    output_conv1_2 = tf.nn.relu(conv2d(output_conv1_1, kernel) + biases, name=scope)
 
-layer_conv3, weights_conv3 = new_conv_layer(input=layer_conv2, num_input_channels=64,
-                                            filter_size=3, num_filters=128, use_pooling=False)
+pool1 = pool_max(output_conv1_2)
 
-layer_conv4, weights_conv4 = new_conv_layer(input=layer_conv3, num_input_channels=128,
-                                            filter_size=3, num_filters=128, use_pooling=True)
+# conv2
+with tf.name_scope('conv2_1') as scope:
+    kernel = weight_variable([3, 3, 64, 128])
+    biases = bias_variable([128])
+    output_conv2_1 = tf.nn.relu(conv2d(pool1, kernel) + biases, name=scope)
 
-layer_conv5, weights_conv5 = new_conv_layer(input=layer_conv4, num_input_channels=128,
-                                            filter_size=3, num_filters=256, use_pooling=False)
+with tf.name_scope('conv2_2') as scope:
+    kernel = weight_variable([3, 3, 128, 128])
+    biases = bias_variable([128])
+    output_conv2_2 = tf.nn.relu(conv2d(output_conv2_1, kernel) + biases, name=scope)
 
-layer_conv6, weights_conv6 = new_conv_layer(input=layer_conv5, num_input_channels=256,
-                                            filter_size=3, num_filters=256, use_pooling=True)
+pool2 = pool_max(output_conv2_2)
 
-layer_conv7, weights_conv7 = new_conv_layer(input=layer_conv6, num_input_channels=256,
-                                            filter_size=3, num_filters=512, use_pooling=True)
+# conv3
+with tf.name_scope('conv3_1') as scope:
+    kernel = weight_variable([3, 3, 128, 256])
+    biases = bias_variable([256])
+    output_conv3_1 = tf.nn.relu(conv2d(pool2, kernel) + biases, name=scope)
 
-layer_flat, num_features = flatten_layer(layer_conv7)
+with tf.name_scope('conv3_2') as scope:
+    kernel = weight_variable([3, 3, 256, 256])
+    biases = bias_variable([256])
+    output_conv3_2 = tf.nn.relu(conv2d(output_conv3_1, kernel) + biases, name=scope)
 
-layer_fc1 = new_fc_layer(input=layer_flat, num_inputs=num_features, num_outputs=512, use_relu=True)
+with tf.name_scope('conv3_3') as scope:
+    kernel = weight_variable([3, 3, 256, 256])
+    biases = bias_variable([256])
+    output_conv3_3 = tf.nn.relu(conv2d(output_conv3_2, kernel) + biases, name=scope)
 
-layer_fc1_drop = tf.nn.dropout(layer_fc1, keep_prob=0.5)
+pool3 = pool_max(output_conv3_3)
 
-layer_fc2 = new_fc_layer(input=layer_fc1_drop, num_inputs=512, num_outputs=2, use_relu=True)
+# conv4
+with tf.name_scope('conv4_1') as scope:
+    kernel = weight_variable([3, 3, 256, 512])
+    biases = bias_variable([512])
+    output_conv4_1 = tf.nn.relu(conv2d(pool3, kernel) + biases, name=scope)
 
-y_pred_label = tf.argmax(layer_fc2, 1)
+with tf.name_scope('conv4_2') as scope:
+    kernel = weight_variable([3, 3, 512, 512])
+    biases = bias_variable([512])
+    output_conv4_2 = tf.nn.relu(conv2d(output_conv4_1, kernel) + biases, name=scope)
 
-cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=layer_fc2, labels=y_true))
+with tf.name_scope('conv4_3') as scope:
+    kernel = weight_variable([3, 3, 512, 512])
+    biases = bias_variable([512])
+    output_conv4_3 = tf.nn.relu(conv2d(output_conv4_2, kernel) + biases, name=scope)
+
+pool4 = pool_max(output_conv4_3)
+
+# conv5
+with tf.name_scope('conv5_1') as scope:
+    kernel = weight_variable([3, 3, 512, 512])
+    biases = bias_variable([512])
+    output_conv5_1 = tf.nn.relu(conv2d(pool4, kernel) + biases, name=scope)
+
+with tf.name_scope('conv5_2') as scope:
+    kernel = weight_variable([3, 3, 512, 512])
+    biases = bias_variable([512])
+    output_conv5_2 = tf.nn.relu(conv2d(output_conv5_1, kernel) + biases, name=scope)
+
+with tf.name_scope('conv5_3') as scope:
+    kernel = weight_variable([3, 3, 512, 512])
+    biases = bias_variable([512])
+    output_conv5_3 = tf.nn.relu(conv2d(output_conv5_2, kernel) + biases, name=scope)
+
+pool5 = pool_max(output_conv5_3)
+
+# fc6
+with tf.name_scope('fc6') as scope:
+    shape = int(np.prod(pool5.get_shape()[1:]))
+    kernel = weight_variable([shape, 1024])
+    biases = bias_variable([1024])
+    pool5_flat = tf.reshape(pool5, [-1, shape])
+    output_fc6 = tf.nn.relu(fc(pool5_flat, kernel, biases), name=scope)
+
+# drop操作
+keep_prob = tf.placeholder(tf.float32)
+output_fc6_drop = tf.nn.dropout(output_fc6, keep_prob)
+
+# fc7
+with tf.name_scope('fc7') as scope:
+    kernel = weight_variable([1024, 1024])
+    biases = bias_variable([1024])
+    output_fc7 = tf.nn.relu(fc(output_fc6_drop, kernel, biases), name=scope)
+
+# drop操作
+output_fc7_drop = tf.nn.dropout(output_fc7, keep_prob)
+
+# fc8
+with tf.name_scope('fc8') as scope:
+    kernel = weight_variable([1024, 2])  # 重点关注最后一个全连接层，输入为1024个通道数、输出为4个（4分类）
+    biases = bias_variable([2])
+    output_fc8 = tf.nn.relu(fc(output_fc7_drop, kernel, biases), name=scope)
+
+y_pred_label = tf.argmax(output_fc8, 1)
+
+cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=output_fc8, labels=y_true))
 optimizer = tf.train.AdamOptimizer(learning_rate=1e-4).minimize(cost)
 correct_prediction = tf.equal(y_pred_label, y_true_label)
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -201,22 +269,22 @@ def optimize(epoch, batch_size):
         for j in range(0, int(num_examples / batch_size)):
             start = j * batch_size
             end = start + batch_size
-            session.run(optimizer, feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end]})
+            session.run(optimizer,
+                        feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end], keep_prob: 0.5})
 
             # 每训练一组batch_size数据后，输出 batch_acc\val等信息
             batch_train_acc = session.run(accuracy,
-                                          feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end]})
+                                          feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end], keep_prob: 1.0})
             batch_train_loss = session.run(cost, feed_dict={x_image: train_images[start:end],
-                                                            y_true: train_labels[start:end]})
+                                                            y_true: train_labels[start:end], keep_prob: 1.0})
             batch_val_acc = session.run(accuracy,
-                                        feed_dict={x_image: validation_images, y_true: validation_labels})
+                                        feed_dict={x_image: validation_images, y_true: validation_labels, keep_prob: 1.0})
             batch_val_loss = session.run(cost,
-                                         feed_dict={x_image: validation_images, y_true: validation_labels})
+                                         feed_dict={x_image: validation_images, y_true: validation_labels, keep_prob: 1.0})
 
             batch_output_string = "batch %s : Train_acc:%.3f, Train_loss:%.3f, Val_acc:%.3f, Val_loss:%.3f"
             print(batch_output_string % (j + 1, batch_train_acc, batch_train_loss, batch_val_acc,
                                          batch_val_loss))  # 输出每batch_size个样本后的train_acc、train_loss、val_acc、val_loss
-
 
             all_batch_train_acc += batch_train_acc
             all_batch_train_loss += batch_train_loss
