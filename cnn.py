@@ -12,6 +12,7 @@ import numpy as np
 import cv2
 from sklearn.utils import shuffle
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 def load_train(train_path, weight_size, hight_size, classes):
     """
@@ -81,7 +82,7 @@ def read_test_set(test_path, weight_size, hight_size, ):
     return images, ids
 
 
-img_size_flat = 256 * 256 * 3  # 图片flatten为1D向量
+img_size_flat = 224 * 224 * 3  # 图片flatten为1D向量
 
 classes = ['dog', 'cat']
 num_classes = len(classes)  # 分类数量
@@ -93,11 +94,11 @@ test_path = 'F:/catdog/test/'
 checkpoint_dir = "models/"
 
 # ## Load Data
-train_images, train_labels, validation_images, validation_labels = read_train_sets(train_path, 256, 256, classes,
+train_images, train_labels, validation_images, validation_labels = read_train_sets(train_path, 224, 224, classes,
                                                                                    validation_size=0.1)
 
 # print(validation_images.shape,train_images.shape,validation_labels.shape,train_labels.shape)
-test_images, test_ids = read_test_set(test_path, weight_size=256, hight_size=256)
+test_images, test_ids = read_test_set(test_path, weight_size=224, hight_size=224)
 num_examples = train_images.shape[0]
 
 print("Size of:")
@@ -109,7 +110,7 @@ print("Validation_set:\t{}".format(validation_images.shape[0]))  # 验证集样�
 
 x = tf.placeholder(tf.float32, shape=[None, img_size_flat],
                    name='x')  # img_size_flat = img_size * img_size * num_channels # EL输入
-x_image = tf.reshape(x, [-1, 256, 256, 3])  # cnn的输入
+x_image = tf.reshape(x, [-1, 224, 224, 3])  # cnn的输入
 y_true = tf.placeholder(tf.float32, shape=[None, num_classes], name='y_true')  # label的真实值
 y_true_label = tf.argmax(y_true, 1)
 
@@ -139,6 +140,7 @@ def pool_max(input):  # 最大池化项
 def fc(input, w, b):  # 全连接层
     return tf.matmul(input, w) + b
 
+# vgg1
 
 # conv1
 with tf.name_scope('conv1_1') as scope:
@@ -223,9 +225,9 @@ pool5 = pool_max(output_conv5_3)
 # fc6
 with tf.name_scope('fc6') as scope:
     shape = int(np.prod(pool5.get_shape()[1:]))
+    pool5_flat = tf.reshape(pool5, [-1, shape])
     kernel = weight_variable([shape, 1024])
     biases = bias_variable([1024])
-    pool5_flat = tf.reshape(pool5, [-1, shape])
     output_fc6 = tf.nn.relu(fc(pool5_flat, kernel, biases), name=scope)
 
 # drop操作
@@ -247,10 +249,12 @@ with tf.name_scope('fc8') as scope:
     biases = bias_variable([2])
     output_fc8 = tf.nn.relu(fc(output_fc7_drop, kernel, biases), name=scope)
 
-y_pred_label = tf.argmax(output_fc8, 1)
+
+new_output_fc8 = tf.nn.softmax(output_fc8)
+y_pred_label = tf.argmax(new_output_fc8, 1)
 
 cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=output_fc8, labels=y_true))
-optimizer = tf.train.AdamOptimizer(learning_rate=1e-4).minimize(cost)
+optimizer = tf.train.AdamOptimizer(learning_rate=1e-5).minimize(cost)
 correct_prediction = tf.equal(y_pred_label, y_true_label)
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
@@ -321,10 +325,10 @@ def optimize(epoch, batch_size):
     end_time = time.time()
     time_dif = end_time - start_time
     saver = tf.train.Saver()
-    save_path = saver.save(session, 'F:/model/model.ckpt')
-    print("保存到：", save_path)
+    #save_path = saver.save(session, 'F:/model/model.ckpt')
+    # print("保存到：", save_path)
     print("Time elapsed: " + str(timedelta(seconds=int(round(time_dif)))))
 
 
-optimize(epoch=20, batch_size=2)
+optimize(epoch=20, batch_size=4)
 session.close()
