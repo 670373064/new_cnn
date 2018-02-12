@@ -14,6 +14,7 @@ from sklearn.utils import shuffle
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+
 def load_train(train_path, weight_size, hight_size, classes):
     """
     load训练数据
@@ -95,7 +96,7 @@ checkpoint_dir = "models/"
 
 # ## Load Data
 train_images, train_labels, validation_images, validation_labels = read_train_sets(train_path, 224, 224, classes,
-                                                                                   validation_size=0.1)
+                                                                                   validation_size=0.01)
 
 # print(validation_images.shape,train_images.shape,validation_labels.shape,train_labels.shape)
 test_images, test_ids = read_test_set(test_path, weight_size=224, hight_size=224)
@@ -107,11 +108,16 @@ print("Test_set:\t{}".format(len(test_images)))  # 测试集样本数
 print("Validation_set:\t{}".format(validation_images.shape[0]))  # 验证集样本数
 
 # -----------------------数据预处理结束------------------------
+with tf.name_scope('input'):
+    x = tf.placeholder(tf.float32, shape=[None, img_size_flat],
+                       name='x')  # img_size_flat = img_size * img_size * num_channels # EL输入
 
-x = tf.placeholder(tf.float32, shape=[None, img_size_flat],
-                   name='x')  # img_size_flat = img_size * img_size * num_channels # EL输入
-x_image = tf.reshape(x, [-1, 224, 224, 3])  # cnn的输入
-y_true = tf.placeholder(tf.float32, shape=[None, num_classes], name='y_true')  # label的真实值
+    y_true = tf.placeholder(tf.float32, shape=[None, num_classes], name='y_true')  # label的真实值
+
+with tf.name_scope('input_reshape'):
+    x_image = tf.reshape(x, [-1, 224, 224, 3])  # cnn的输入
+    tf.summary.image('input', x_image, 10)
+
 y_true_label = tf.argmax(y_true, 1)
 
 
@@ -125,7 +131,20 @@ def bias_variable(shape, name="biases"):  # 初始化偏置项 b
     return tf.Variable(initial, name=name)
 
 
+def variable_summaries(var):
+    with tf.name_scope('summaries'):
+        mean = tf.reduce_mean(var)
+        tf.summary.scalar('mean', mean)
+        with tf.name_scope('stddev'):
+            stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+        tf.summary.scalar('stddev', stddev)
+        tf.summary.scalar('max', tf.reduce_max(var))
+        tf.summary.scalar('min', tf.reduce_min(var))
+        tf.summary.histogram('histogram', var)
+
+
 def conv2d(input, w):  # 卷积项，w为卷积核
+    tf.summary.histogram('weight&bias', w)
     return tf.nn.conv2d(input, w, [1, 1, 1, 1], padding='SAME')
 
 
@@ -140,18 +159,24 @@ def pool_max(input):  # 最大池化项
 def fc(input, w, b):  # 全连接层
     return tf.matmul(input, w) + b
 
-# vgg1
+
 
 # conv1
 with tf.name_scope('conv1_1') as scope:
     kernel = weight_variable([3, 3, 3, 64])  # 重点关注第一层卷积。卷积核为3*3,输入channels = 1(输入通道数),卷集核个数（输出通道数）为64。
     biases = bias_variable([64])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv1_1 = tf.nn.relu(conv2d(x_image, kernel) + biases, name=scope)
+    tf.summary.histogram('output_conv1_1', output_conv1_1)
 
 with tf.name_scope('conv1_2') as scope:
     kernel = weight_variable([3, 3, 64, 64])
     biases = bias_variable([64])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv1_2 = tf.nn.relu(conv2d(output_conv1_1, kernel) + biases, name=scope)
+    tf.summary.histogram('output_conv1_2', output_conv1_2)
 
 pool1 = pool_max(output_conv1_2)
 
@@ -159,12 +184,18 @@ pool1 = pool_max(output_conv1_2)
 with tf.name_scope('conv2_1') as scope:
     kernel = weight_variable([3, 3, 64, 128])
     biases = bias_variable([128])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv2_1 = tf.nn.relu(conv2d(pool1, kernel) + biases, name=scope)
+    tf.summary.histogram('output_conv2_1', output_conv2_1)
 
 with tf.name_scope('conv2_2') as scope:
     kernel = weight_variable([3, 3, 128, 128])
     biases = bias_variable([128])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv2_2 = tf.nn.relu(conv2d(output_conv2_1, kernel) + biases, name=scope)
+    tf.summary.histogram('output_conv2_2', output_conv2_2)
 
 pool2 = pool_max(output_conv2_2)
 
@@ -172,17 +203,26 @@ pool2 = pool_max(output_conv2_2)
 with tf.name_scope('conv3_1') as scope:
     kernel = weight_variable([3, 3, 128, 256])
     biases = bias_variable([256])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv3_1 = tf.nn.relu(conv2d(pool2, kernel) + biases, name=scope)
+    tf.summary.histogram('output_conv3_1', output_conv3_1)
 
 with tf.name_scope('conv3_2') as scope:
     kernel = weight_variable([3, 3, 256, 256])
     biases = bias_variable([256])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv3_2 = tf.nn.relu(conv2d(output_conv3_1, kernel) + biases, name=scope)
+    tf.summary.histogram('output_conv3_2', output_conv3_2)
 
 with tf.name_scope('conv3_3') as scope:
     kernel = weight_variable([3, 3, 256, 256])
     biases = bias_variable([256])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv3_3 = tf.nn.relu(conv2d(output_conv3_2, kernel) + biases, name=scope)
+    tf.summary.histogram('output_conv3_3', output_conv3_3)
 
 pool3 = pool_max(output_conv3_3)
 
@@ -190,16 +230,23 @@ pool3 = pool_max(output_conv3_3)
 with tf.name_scope('conv4_1') as scope:
     kernel = weight_variable([3, 3, 256, 512])
     biases = bias_variable([512])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv4_1 = tf.nn.relu(conv2d(pool3, kernel) + biases, name=scope)
+    tf.summary.histogram('output_conv4_1', output_conv4_1)
 
 with tf.name_scope('conv4_2') as scope:
     kernel = weight_variable([3, 3, 512, 512])
     biases = bias_variable([512])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv4_2 = tf.nn.relu(conv2d(output_conv4_1, kernel) + biases, name=scope)
 
 with tf.name_scope('conv4_3') as scope:
     kernel = weight_variable([3, 3, 512, 512])
     biases = bias_variable([512])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv4_3 = tf.nn.relu(conv2d(output_conv4_2, kernel) + biases, name=scope)
 
 pool4 = pool_max(output_conv4_3)
@@ -208,16 +255,22 @@ pool4 = pool_max(output_conv4_3)
 with tf.name_scope('conv5_1') as scope:
     kernel = weight_variable([3, 3, 512, 512])
     biases = bias_variable([512])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv5_1 = tf.nn.relu(conv2d(pool4, kernel) + biases, name=scope)
 
 with tf.name_scope('conv5_2') as scope:
     kernel = weight_variable([3, 3, 512, 512])
     biases = bias_variable([512])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv5_2 = tf.nn.relu(conv2d(output_conv5_1, kernel) + biases, name=scope)
 
 with tf.name_scope('conv5_3') as scope:
     kernel = weight_variable([3, 3, 512, 512])
     biases = bias_variable([512])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_conv5_3 = tf.nn.relu(conv2d(output_conv5_2, kernel) + biases, name=scope)
 
 pool5 = pool_max(output_conv5_3)
@@ -228,6 +281,8 @@ with tf.name_scope('fc6') as scope:
     pool5_flat = tf.reshape(pool5, [-1, shape])
     kernel = weight_variable([shape, 1024])
     biases = bias_variable([1024])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_fc6 = tf.nn.relu(fc(pool5_flat, kernel, biases), name=scope)
 
 # drop操作
@@ -238,6 +293,8 @@ output_fc6_drop = tf.nn.dropout(output_fc6, keep_prob)
 with tf.name_scope('fc7') as scope:
     kernel = weight_variable([1024, 1024])
     biases = bias_variable([1024])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_fc7 = tf.nn.relu(fc(output_fc6_drop, kernel, biases), name=scope)
 
 # drop操作
@@ -247,16 +304,23 @@ output_fc7_drop = tf.nn.dropout(output_fc7, keep_prob)
 with tf.name_scope('fc8') as scope:
     kernel = weight_variable([1024, 2])  # 重点关注最后一个全连接层，输入为1024个通道数、输出为4个（4分类）
     biases = bias_variable([2])
+    variable_summaries(kernel)
+    variable_summaries(biases)
     output_fc8 = tf.nn.relu(fc(output_fc7_drop, kernel, biases), name=scope)
-
 
 new_output_fc8 = tf.nn.softmax(output_fc8)
 y_pred_label = tf.argmax(new_output_fc8, 1)
 
-cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=output_fc8, labels=y_true))
-optimizer = tf.train.AdamOptimizer(learning_rate=1e-5).minimize(cost)
-correct_prediction = tf.equal(y_pred_label, y_true_label)
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+with tf.name_scope('cost'):
+    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=output_fc8, labels=y_true))
+
+with tf.name_scope('optimizer'):
+    optimizer = tf.train.AdamOptimizer(learning_rate=1e-4).minimize(cost)
+
+with tf.name_scope('accuracy'):
+    correct_prediction = tf.equal(y_pred_label, y_true_label)
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+tf.summary.scalar('accuracy', accuracy)
 
 session = tf.Session()
 session.run(tf.global_variables_initializer())
@@ -324,11 +388,10 @@ def optimize(epoch, batch_size):
         '''
     end_time = time.time()
     time_dif = end_time - start_time
-    saver = tf.train.Saver()
-    #save_path = saver.save(session, 'F:/model/model.ckpt')
     # print("保存到：", save_path)
     print("Time elapsed: " + str(timedelta(seconds=int(round(time_dif)))))
 
-
-optimize(epoch=20, batch_size=4)
+    writer = tf.summary.FileWriter(r'C:\Users\Administrator\tf', tf.get_default_graph())
+    writer.close()
+optimize(epoch=2, batch_size=4)
 session.close()
