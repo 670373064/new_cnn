@@ -160,7 +160,6 @@ def fc(input, w, b):  # 全连接层
     return tf.matmul(input, w) + b
 
 
-
 # conv1
 with tf.name_scope('conv1_1') as scope:
     kernel = weight_variable([3, 3, 3, 64])  # 重点关注第一层卷积。卷积核为3*3,输入channels = 1(输入通道数),卷集核个数（输出通道数）为64。
@@ -330,51 +329,43 @@ session.run(tf.global_variables_initializer())
 def optimize(epoch, batch_size):
     start_time = time.time()
     for i in range(epoch):
-        all_batch_train_acc = 0
-        all_batch_train_loss = 0
-        all_batch_val_acc = 0
-        all_batch_val_loss = 0
         for j in range(0, int(num_examples / batch_size)):
             start = j * batch_size
             end = start + batch_size
-            session.run(optimizer,
-                        feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end], keep_prob: 0.5})
+            if j % 10 == 0:  # 每10次训练 会对准确率进行一次测评
+                batch_train_acc = session.run(accuracy, feed_dict={x_image: train_images[start:end],
+                                                                   y_true: train_labels[start:end], keep_prob: 1.0})
+                batch_train_loss = session.run(cost, feed_dict={x_image: train_images[start:end],
+                                                                y_true: train_labels[start:end], keep_prob: 1.0})
+                batch_val_acc = session.run(accuracy, feed_dict={x_image: validation_images,
+                                                                 y_true: validation_labels, keep_prob: 1.0})
+                batch_val_loss = session.run(cost, feed_dict={x_image: validation_images,
+                                                              y_true: validation_labels, keep_prob: 1.0})
+                print('step %d,batch_train_acc %g' % (i, batch_train_acc))
+                print('step %d,batch_train_loss %g' % (i, batch_train_loss))
+                print('step %d,batch_val_acc %g' % (i, batch_val_acc))
+                print('step %d,batch_val_loss %g' % (i, batch_val_loss))
+
+            session.run(optimizer, feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end], keep_prob: 0.5})
 
             # 每训练一组batch_size数据后，输出 batch_acc\val等信息
-            batch_train_acc = session.run(accuracy,
-                                          feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end], keep_prob: 1.0})
-            batch_train_loss = session.run(cost, feed_dict={x_image: train_images[start:end],
-                                                            y_true: train_labels[start:end], keep_prob: 1.0})
-            batch_val_acc = session.run(accuracy,
-                                        feed_dict={x_image: validation_images, y_true: validation_labels, keep_prob: 1.0})
-            batch_val_loss = session.run(cost,
-                                         feed_dict={x_image: validation_images, y_true: validation_labels, keep_prob: 1.0})
 
-            batch_output_string = "batch %s : Train_acc:%.3f, Train_loss:%.3f, Val_acc:%.3f, Val_loss:%.3f"
-            print(batch_output_string % (j + 1, batch_train_acc, batch_train_loss, batch_val_acc,
+
+
+        '''
+        batch_output_string = "batch %s : Train_acc:%.3f, Train_loss:%.3f, Val_acc:%.3f, Val_loss:%.3f"
+        print(batch_output_string % (j + 1, batch_train_acc, batch_train_loss, batch_val_acc,
                                          batch_val_loss))  # 输出每batch_size个样本后的train_acc、train_loss、val_acc、val_loss
 
-            all_batch_train_acc += batch_train_acc
-            all_batch_train_loss += batch_train_loss
-            all_batch_val_acc += batch_val_acc
-            all_batch_val_loss += batch_val_loss
-        '''
+
+
         # 每一轮epoch后输出 acc等（数据来源于这一轮epoch的最后一个batch_szie）
         acc = session.run(accuracy, feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end]})
         train_loss = session.run(cost, feed_dict={x_image: train_images[start:end], y_true: train_labels[start:end]})
 
         val_acc = session.run(accuracy, feed_dict={x_image: validation_images[:5], y_true: validation_labels[:5]})
         val_loss = session.run(cost, feed_dict={x_image: validation_images[:5], y_true: validation_labels[:5]})
-        '''
-        # print(all_batch_train_acc, all_batch_train_loss, all_batch_val_acc, all_batch_val_loss)
-        # 每一轮epoch后输出平均acc等（数据来源于这一轮epoch的最后一个batch_szie
-        avg_train_acc = all_batch_train_acc / int(num_examples / batch_size)
-        avg_train_loss = all_batch_train_loss / int(num_examples / batch_size)
-        avg_val_acc = all_batch_val_acc / int(num_examples / batch_size)
-        avg_val_loss = all_batch_val_loss / int(num_examples / batch_size)
-        output_string = "Epoch %s >>> Train_acc:%.3f, Train_loss:%.3f, Val_acc:%.3f, Val_loss:%.3f <<<"
-        print(output_string % (i + 1, avg_train_acc, avg_train_loss, avg_val_acc, avg_val_loss))
-        print('\r')
+       '''
 
         '''
         if early_stopping:
@@ -393,5 +384,7 @@ def optimize(epoch, batch_size):
 
     writer = tf.summary.FileWriter(r'C:\Users\Administrator\tf', tf.get_default_graph())
     writer.close()
-optimize(epoch=2, batch_size=4)
+
+
+optimize(epoch=10, batch_size=4)
 session.close()
